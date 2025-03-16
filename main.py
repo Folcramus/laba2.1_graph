@@ -2,20 +2,22 @@ import tkinter as tk
 import numpy as np
 import math
 
+# Размеры окна
 WIDTH, HEIGHT = 800, 600
-CENTER_X, CENTER_Y = WIDTH // 2, HEIGHT // 2
+CENTER_X, CENTER_Y = WIDTH // 2, HEIGHT // 2  # Центр координат в системе Canvas
 
+# Преобразование координат из математических в координаты холста (Canvas)
 def to_canvas_coords(x, y):
-    return CENTER_X + x, CENTER_Y - y
+    return CENTER_X + x, CENTER_Y - y  # Canvas: X вправо, Y вниз
 
 class Shape:
     def __init__(self, canvas):
         self.canvas = canvas
-        self.color = 'blue'
-        self.star_color = 'black'
-        self.shadow_color = 'gray20'
+        self.color = 'blue'           # Цвет прямоугольника
+        self.star_color = 'black'     # Цвет звезды (не используется, но можно задать)
+        self.shadow_color = 'gray20'  # Цвет заливки звезды (делает её объемной)
 
-        # Прямоугольник
+        # Исходные точки прямоугольника (левая нижняя, правая нижняя, правая верхняя, левая верхняя)
         self.original_rect_points = np.array([
             [-91, -55],
             [90, -55],
@@ -23,58 +25,63 @@ class Shape:
             [-91, 100]
         ])
 
-        # Объемная перевернутая трехконечная звезда
-        self.star_center = [0, 0]
-        self.star_radius = 100  # кончики касаются граней прямоугольника
-        self.star_width = 60  # ширина клина в градусах
-        self.original_star_triangles = []
+        # --- Создание перевернутой объемной трехконечной звезды ---
+        self.star_center = [0, 0]          # Центр звезды (в центре прямоугольника)
+        self.star_radius = 100             # Длина луча от центра до края
+        self.star_width = 60               # Ширина каждого луча в градусах
+        self.original_star_triangles = []  # Список треугольников, составляющих звезду
 
-        angles_deg = [90, 210, 330]  # перевернутая звезда
+        angles_deg = [90, 210, 330]  # Углы направлений лучей (перевернутая звезда)
 
         for angle_deg in angles_deg:
-            angle = math.radians(angle_deg)
-            angle_left = angle - math.radians(self.star_width)
-            angle_right = angle + math.radians(self.star_width)
+            angle = math.radians(angle_deg)                     # Угол в радианах
+            angle_left = angle - math.radians(self.star_width) # Левый край луча
+            angle_right = angle + math.radians(self.star_width) # Правый край луча
 
+            # Кончик луча (дальний конец)
             tip_x = self.star_radius * math.cos(angle)
             tip_y = self.star_radius * math.sin(angle)
 
+            # Левые и правые боковые грани луча (не такие длинные, чтобы выглядело объемно)
             side1_x = self.star_radius * 0.2 * math.cos(angle_left)
             side1_y = self.star_radius * 0.2 * math.sin(angle_left)
 
             side2_x = self.star_radius * 0.2 * math.cos(angle_right)
             side2_y = self.star_radius * 0.2 * math.sin(angle_right)
 
+            # Треугольник: центр -> левая грань -> кончик -> правая грань
             triangle = [
-                [0, 0],  # Центр
-                [side1_x, side1_y],  # Левая грань клина
-                [tip_x, tip_y],  # Кончик луча
-                [side2_x, side2_y]  # Правая грань клина
+                [0, 0],                # Центр
+                [side1_x, side1_y],   # Левая грань луча
+                [tip_x, tip_y],       # Кончик луча
+                [side2_x, side2_y]    # Правая грань луча
             ]
             self.original_star_triangles.append(triangle)
 
+        # Копируем исходные точки в текущие (для трансформаций)
         self.rect_points = self.original_rect_points.copy()
         self.star_triangles = [np.array(tri) for tri in self.original_star_triangles]
 
-        self.rect_id = None
-        self.star_ids = []
-        self.draw()
+        self.rect_id = None    # ID прямоугольника на холсте
+        self.star_ids = []     # ID всех частей звезды
+        self.draw()            # Отрисовка
 
     def draw(self):
+        # Очистка предыдущих фигур
         if self.rect_id:
             self.canvas.delete(self.rect_id)
         for sid in self.star_ids:
             self.canvas.delete(sid)
         self.star_ids.clear()
 
-        # Прямоугольник
+        # --- Отрисовка прямоугольника ---
         coords = []
         for x, y in self.rect_points:
             cx, cy = to_canvas_coords(x, y)
             coords.extend([cx, cy])
         self.rect_id = self.canvas.create_polygon(coords, fill='', outline=self.color, width=2)
 
-        # Звезда
+        # --- Отрисовка звезды (каждый треугольник) ---
         for tri in self.star_triangles:
             coords = []
             for x, y in tri:
@@ -84,15 +91,15 @@ class Shape:
             self.star_ids.append(poly)
 
     def apply_transform(self, matrix):
-        # Прямоугольник
+        # --- Преобразование прямоугольника ---
         transformed = []
         for x, y in self.rect_points:
-            vec = np.array([x, y, 1])
-            res = matrix @ vec
+            vec = np.array([x, y, 1])     # Однородные координаты
+            res = matrix @ vec            # Умножение на матрицу
             transformed.append([res[0], res[1]])
         self.rect_points = np.array(transformed)
 
-        # Звезда
+        # --- Преобразование звезды ---
         new_star = []
         for tri in self.star_triangles:
             new_tri = []
@@ -103,9 +110,10 @@ class Shape:
             new_star.append(np.array(new_tri))
         self.star_triangles = new_star
 
-        self.draw()
+        self.draw()  # Перерисовка
 
     def reset(self):
+        # Сброс всех фигур к исходному состоянию
         self.rect_points = self.original_rect_points.copy()
         self.star_triangles = [tri.copy() for tri in self.original_star_triangles]
         self.draw()
@@ -116,16 +124,18 @@ class App:
         self.root.title("Преобразования фигур")
         self.canvas = tk.Canvas(root, width=WIDTH, height=HEIGHT, bg='white')
         self.canvas.pack(side=tk.LEFT)
-        self.create_axes()
 
-        self.shape = Shape(self.canvas)
-        self.build_controls()
+        self.create_axes()               # Рисуем оси координат
+        self.shape = Shape(self.canvas) # Создаем фигуру
+        self.build_controls()           # Панель управления
 
     def create_axes(self):
-        self.canvas.create_line(0, CENTER_Y, WIDTH, CENTER_Y, fill='gray')
-        self.canvas.create_line(CENTER_X, 0, CENTER_X, HEIGHT, fill='gray')
+        # Отображение осей координат
+        self.canvas.create_line(0, CENTER_Y, WIDTH, CENTER_Y, fill='gray')    # X-ось
+        self.canvas.create_line(CENTER_X, 0, CENTER_X, HEIGHT, fill='gray')   # Y-ось
 
     def build_controls(self):
+        # Создание кнопок управления
         frame = tk.Frame(self.root)
         frame.pack(side=tk.RIGHT, padx=10, pady=10)
 
@@ -140,6 +150,7 @@ class App:
         tk.Button(frame, text="Сброс", command=self.shape.reset).pack(fill='x')
 
     def get_value(self, prompt):
+        # Диалоговое окно для ввода чисел
         return tk.simpledialog.askfloat("Ввод", prompt)
 
     def translate_x(self):
@@ -200,6 +211,7 @@ class App:
             matrix = T2 @ R @ T1
             self.shape.apply_transform(matrix)
 
+# Запуск приложения
 if __name__ == "__main__":
     import tkinter.simpledialog
     root = tk.Tk()
